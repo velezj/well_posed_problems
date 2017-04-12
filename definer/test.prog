@@ -1,0 +1,21 @@
+A first statment
+
+[[ and now a block statemnt ]]
+
+These are just
+a Set of
+Statements
+
+%%
+A now we are in a new context (it was switched!!)
+%%
+
+And back to statements
+
+%end with some arguments [[ that are blocked ]] %
+
+And some more statements
+
+[[ and some fancy [[ double blocked ]] statements [[ with pleasure ]] ]]
+
+and some more stuff

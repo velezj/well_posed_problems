@@ -1,0 +1,40 @@
+Program:
+  expressions+=Expression
+;
+
+Expression:
+  Command | ContextSwitch | Statement
+;
+
+ContextSwitch:
+  context=ContextID body=/.+/ "%%"
+;
+
+ContextID[noskipws]:
+  "%%"- /[^% \t\n]*/
+;
+
+Command:
+  cmd=CommandID args=Statement "%" 
+;
+
+CommandID[noskipws]:
+  "%"- ID 
+;
+
+Statement:
+  parts+=Symbol
+;
+
+Symbol:
+  BlockSymbol | TokenSymbol
+;
+
+TokenSymbol:
+  ( /[^% \t\n[\]]\S*/ | /\[[^[ \t\n]+/ | /\][^\] \t\n]+/ | "[ " | "] " ) /\s*/-
+;
+
+BlockSymbol:
+  "[[" statement=Statement "]]"
+;
+
