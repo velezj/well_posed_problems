@@ -9,6 +9,7 @@ logger = logging.getLogger( __name__ )
 # This is the default classic Concept
 
 import concept
+import python_definition
 
 from textx import metamodel
 
@@ -51,10 +52,10 @@ class BasicGrammarConcept( concept.ConceptBase ):
                 res = self._concepts_from_statement( expr, self )
                 concepts.extend( res )
             elif stype == 'ContextSwitch':
-                res = self._concepts_from_context_switch( expr )
+                res = self._concepts_from_context_switch( expr, self )
                 concepts.extend( res )
             elif stype == 'Command':
-                res = self._concepts_from_command( expr )
+                res = self._concepts_from_command( expr, self )
                 concepts.extend( res )
             else:
                 raise RuntimeError( "Unknown basic_gramma object '{0}'".format( expr ) )
@@ -123,14 +124,40 @@ class BasicGrammarConcept( concept.ConceptBase ):
 
     ##
     # returns a lsit of concepts from a basic_grammar.Command
-    def _concepts_from_command( self, command ):
-        return []
+    def _concepts_from_command( self, command, parent ):
+
+        # ok, we create a top-level concept that is the
+        # command itself
+        # and create the concepts for the arguments
+        arg_concepts = self._concepts_from_statement( command.args, None )
+        cmd = concept.CommandConcept(
+            parent_concept = parent,
+            command_identifier = command.cmd,
+            arg_concepts = arg_concepts )
+        for c in arg_concepts:
+            c.parent_concept = cmd
+        return [ cmd ]
 
     ##
     # returns a list of concepts from a basic_grammar.ContextSwitch
-    def _concepts_from_context_switch( self, context_switch ):
-        return []
+    def _concepts_from_context_switch( self, context_switch, parent ):
 
+        # Ok, a ContextSwitch is treated a a PythonDefinition
+        # so we create a concept with a definition in it
+        if not ( context_switch.context == 'python' or context_switch.context == '' or context_switch.context is None):
+            raise RuntimeError( "Unknown contexts in ContextSwitch: '{0}'".format( context_switch.context ) )
+
+
+        c = concept.BoxConcept(
+            parent_concept = parent,
+            value = context_switch )
+        python_def = python_definition.PythonDefinition(
+            concept = c,
+            source = context_switch.body )
+        c.context.bind_definition( python_def )
+
+        return [ c ]
+    
 ##=========================================================================
 ##=========================================================================
 ##=========================================================================

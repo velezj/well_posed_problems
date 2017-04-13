@@ -7,11 +7,15 @@ Expression:
 ;
 
 ContextSwitch:
-  context=ContextID body=/.+/ "%%"
+  context=ContextID body=ContextBody "%%"
 ;
 
 ContextID[noskipws]:
-  "%%"- /[^% \t\n]*/
+  /\s*%%/- /[^% \t\n]*/ 
+;
+
+ContextBody:
+  /([^%][^%])+/
 ;
 
 Command:

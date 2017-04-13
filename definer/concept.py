@@ -28,6 +28,8 @@ logger = logging.getLogger( __name__ )
 # A Context is a glorified dictionary with utility functions and a type tag
 class Context( dict ):
 
+    DEFINITION_KEY = "%%DEFINITION%%"
+
     ##
     # Initialize the dictionary
     def __init__( self, *args, **kw ):
@@ -37,7 +39,12 @@ class Context( dict ):
     # There is a *special* identifier for a "definition" of something,
     # and here we can access it
     def definition_binding(self):
-        return self.get( "%%DEFINITION%%", None )
+        return self.get( self.DEFINITION_KEY, None )
+
+    ##
+    # bind the definition in this context
+    def bind_definition(self,definition):
+        self[ self.DEFINITION_KEY ] = definition
 
 ##=========================================================================
 
@@ -212,16 +219,20 @@ class ConceptBase( object ):
         if direct_def is not None:
             return direct_def
 
+        # if we have no constituents, return base definition
+        if len(self.constituent_concepts) == 0:
+            return DefinitionBase(
+                concept = self,
+                source = None )
+
         # Ok, now try to get definitions from all constituents
         defs = []
         for c in self.constituent_concepts:
             cdef = c.possible_definition()
-            if cdef is not None:
-                defs.append( cdef )
-            else:
-                return None # not all constotuents have a definition so we don't
-
-        # ok, all constituents have possible definitions, return them
+            defs.append( cdef )
+            
+        # ok, all constituents have possible definitions so return a group
+        # definitionf with them
         return self._group_possible_definition(defs)
 
     ##
@@ -274,9 +285,20 @@ class DefinitionBase( object ):
     ##
     # returns true iff this definition is well defined (no free vars)
     #
-    # Subclasses must implement this
+    # Subclasses must implement this if the default does not work
+    # Generally we would like ot implement get_not_well_defined()
     def is_well_defined(self):
-        raise NotImplementedError()
+        return len( self.get_not_well_defined() ) == 0
+
+    ##
+    # returns a List[ NotWellDefined ] objects determining the things that
+    # are not well-defined in this definition
+    #
+    # Subclasses must override this
+    def get_not_well_defined(self):
+        return [ NotWellDefinedConcept(
+            definition=self,
+            concept=self.concept ) ]
 
 ##=========================================================================
 
@@ -295,13 +317,116 @@ class GroupPossibleDefinition( DefinitionBase ):
         self.concept = concept
         self.inner_definitions = inner_definitions
 
-    ##
-    # By default, group definitions are not well-defined.
-    # Subclasses do all their work here :)
-    def is_well_defined(self):
-        return False
 
 ##=========================================================================
+##=========================================================================
+
+##
+# The base for NotWellDefined which represents something that is keeping
+# a definition from being "well-defined"
+class NotWellDefined( object ):
+
+    ##
+    # Every NotWellDefined is tried to a DefinitionBase definition
+    def __init__( self,
+                  definition ):
+        self.definition = definition
+
+    ##
+    # A String representation
+    def __str__(self):
+        return "{0}[{1}]".format(
+            type(self).__name__,
+            self.definition.source )
+
+##=========================================================================
+
+##
+# A NotWellDefined where a particular Concept itself is what is not
+# well defined
+class NotWellDefinedConcept( NotWellDefined ):
+
+    ##
+    # Creates a NotWellDefined with given definition and concept
+    # that is not defined
+    def __init__( self,
+                  definition,
+                  concept ):
+        NotWellDefined.__init__( self,
+                                 definition )
+        self.concept = concept
+
+    ##
+    # Returns a string representations
+    def __str__( self ):
+        return "NotWellDefined[Concept: {0}]".format(
+            map(lambda r: r.human_friendly(),
+                self.concept.representations ) )
+
+##=========================================================================
+
+##
+# A NotWellDefined where a Binding is not defined ut expected
+class NotWellDefinedMissingBinding( NotWellDefined ):
+
+    ##
+    # Create a new NotWellDefined for given definition and
+    # expected binding name
+    def __init__( self,
+                  definition,
+                  binding_name ):
+        NotWellDefined.__init__(self,definition)
+        self.binding_name = binding_name
+
+    ##
+    # String representation
+    def __str__(self):
+        return "NotWellDefined[Missing-Binding: '{0}']".format(
+            self.binding_name )
+
+##=========================================================================
+
+##
+# A NotWellDefined where we have too many bindings for a symbol
+# and we expect only one
+class NotWellDefinedAmbiguousBinding( NotWellDefined ):
+
+    ##
+    # Create a new NotWellDefined with the definition,
+    # and binding name, and the bindings for it which are
+    # anbiguous
+    def __init__( self,
+                  definition,
+                  binding_name,
+                  bindings ):
+        NotWellDefined.__init__(self,definition)
+        self.binding_name = binding_name
+        self.bindings = bindings
+
+    ##
+    # A String repreentation of this not-well-defined
+    def __str__(self):
+        s = "NotWellDefined[Ambiguous-Binding for '{0}': ".format(
+            self.binding_name )
+        for b in self.bindings:
+            s += "{0}={1} , ".format( b.identifier,
+                                      b.value )
+        s += "]"
+        return s
+
+##=========================================================================
+
+##
+# A NotWellDefined that is because of a syntax error in hte source of
+# the definition
+class NotWellDefinedSyntaxError( NotWellDefined ):
+
+    ##
+    # Creates a NotWellDefined with the definition which has broken syntax
+    def __init__(self,
+                 definition ):
+        NotWellDefined.__init__(self,definition)
+
 ##=========================================================================
 ##=========================================================================
 ##=========================================================================
@@ -310,6 +435,9 @@ class GroupPossibleDefinition( DefinitionBase ):
 # A superclass for Concepts which have the most rudimentary of parse(...)
 # functions that just reutrn BoxConcept with the input :)
 class ParselessConcept( ConceptBase ):
+
+    def __init__( self, *args, **kw ):
+        ConceptBase.__init__( self, *args, **kw )
 
     def parse( self, raw ):
         return [ BoxConcept( parent_concept = self,
@@ -331,8 +459,9 @@ class BoxConcept( ParselessConcept ):
         reps.append( Representation( "#|Box:{0}|#".format(value) ) )
         reps.append( Representation( "#|Box id={0}|#".format(id(self)) ) )
         ParselessConcept.__init__(
+            self,
             parent_concept = parent_concept,
-            constituents = [],
+            constituent_concepts = [],
             context = context,
             representations = reps )
         self.value = value
@@ -374,7 +503,7 @@ class CommandConcept( ParselessConcept ):
                 command_identifier,
                 map(lambda c: c.representations[0].human_friendly(),
                     arg_concepts) ) ) )
-        reps.append( Representations( "#|Command{0}|#".format(identifier) ) )
+        reps.append( Representation( "#|Command{0}|#".format(identifier) ) )
 
         # ok, create baseclass
         ConceptBase.__init__(
