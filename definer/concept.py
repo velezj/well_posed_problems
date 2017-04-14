@@ -55,9 +55,18 @@ class Context( dict ):
 class Representation( object ):
 
     ##
+    # Some canstant defining the levels of a representation
+    LEVEL_HUMAN_SEMMANTICS = 50
+    LEVEL_INPUT_MORPHISM = 30
+    LEVEL_SYSTEM_INFORMATION = 10
+    LEVEL_IDENTIFIER = 5
+    LEVEL_UNKNOWN = 0
+
+    ##
     # Initialize a Representation with the given string
-    def __init__( self, raw ):
+    def __init__( self, raw, level = LEVEL_UNKNOWN ):
         self.raw = raw
+        self.level = level
 
     ##
     # Returns a human-friendly version of this Representation
@@ -73,6 +82,95 @@ class Representation( object ):
         return s
 
 ##=========================================================================
+
+##=========================================================================
+
+
+##
+# Returns a the fully expanded representation
+#
+# This returns a structure with the following semantics:
+#   1) a List means a choice of possible human_friendly() strings
+#      that could be used to represent the concept at that point in
+#      the structure.  This is essentially an OR constraint
+#   2) A Tuple represents a structural constraint and means that
+#      the concept has a given number of children. This constraints the
+#      number of children of the concept to be this exact number
+#   3) A String represents a human_friendly() result of a representation
+#      and is a strict equality constraint on hte string
+#
+# Note: by design we always strart iwth a List since there can always be
+#       a choice of size one :)
+def fully_expand_representations( c ):
+    
+    res = []
+    for r in c.representations:
+        res.append( r.human_friendly() )
+        
+    # ok, we can also represent this as a lsit of it's constituents
+    if len(c.constituent_concepts) > 0:
+        child_res = []
+        for c0 in c.constituent_concepts:
+            child_res.append( fully_expand_representations( c0 ) )
+        res.append( tuple(child_res) )
+    return res
+
+##=========================================================================
+
+
+##
+# Gien a fully expanded list of representations and
+# a concept, returns true iff the concept matches the
+# expanded reps (any of them)
+def any_rep_match( expanded_reps, c ):
+
+    # o, in hte expanded reps a List is treated as a choice (so any one
+    # inside must match) and a Tuple is treated as a structure so *all* must
+    # match and exactly match
+
+    # structure check
+    if isinstance( expanded_reps, tuple ):
+
+        # length of sturecture must match number of chicldren
+        if len( expanded_reps ) != len(c.constituent_concepts):
+            return False
+
+        # ok, lengths match so structure matches, let's dive in
+        # to their euality checks
+        for erep, c0 in zip( expanded_reps,
+                             c.constituent_concepts ):
+            match = any_rep_match( erep,
+                                   c0 )
+            if not match:
+                return False
+
+        # ok, structure matched and inner matched so yes
+        return True
+
+    # choice check
+    if isinstance( expanded_reps, list ):
+
+        # return true if any of them match
+        for erep in expanded_reps:
+            match = any_rep_match( erep, c )
+            if match:
+                return True
+
+        # ok, none of them matched so no match
+        return False
+
+    # neither tuple nor list, so this is an equality ocnstrain check
+    # on the concept's representations.  See if *any* of the
+    # representations match
+    for r in c.representations:
+        string = r.human_friendly()
+        match = ( expanded_reps == string )
+        if match:
+            return True
+
+    # ok, getting here means no representaion equaility matched using
+    # the human_friendly stirng, so no match
+    return False
 
 ##=========================================================================
 
@@ -112,6 +210,10 @@ def leaves_human_reps( c, all_reps=False ):
 #
 # Further, Concepts are all explicitly within a global graph
 # using paret->child nad constituent relations
+#
+# The Representations in the concept are stored in "most preffered" to
+# least preffered order, so by default the first representation will
+# be used whenever a single representation of the concept is needed
 class ConceptBase( object ):
 
     ##
@@ -125,7 +227,7 @@ class ConceptBase( object ):
                   parent_concept,
                   constituent_concepts,
                   context = Context(),
-                  representations = [],
+                  representations = None,
                   identifier = None ):
         self.parent_concept = parent_concept
         self.constituent_concepts = constituent_concepts
@@ -140,17 +242,34 @@ class ConceptBase( object ):
             self.representations = []
 
         # always add the basic default rep
-        srep = "#|{2} id={0}/{1}|#".format(
+        srep = "#|id={0}|#".format(
+            self.identifier )
+        self.representations.append( Representation(
+            srep,
+            level=Representation.LEVEL_IDENTIFIER) )
+        srep = "#|{1} id={0}|#".format(
             self.identifier,
-            id(self),
             type(self).__name__)
-        self.representations.append( Representation( srep ) )
+        self.representations.append( Representation(
+            srep,
+            level=Representation.LEVEL_IDENTIFIER) )
+
+        # add ourselves to parent if not alreayd there
+        if parent_concept is not None and self not in parent_concept.constituent_concepts:
+            parent_concept.constituent_concepts.append( self )
+        
+
+    ##
+    # Returns the single most "preferred" representation
+    # Fir now it's just the first one in list
+    def preferred_representation(self):
+        return self.representations[0]
 
     ##
     # By default a stirng representation jsut uses the
     # first representations human_friendly
     def __str__(self):
-        return self.representations[0].human_friendly()
+        return self.preferred_representation().human_friendly()
 
     ##
     # Return true if this is a top-level concept
@@ -456,8 +575,12 @@ class BoxConcept( ParselessConcept ):
         context = Context()
         context[ 'value' ] = value
         reps = []
-        reps.append( Representation( "#|Box:{0}|#".format(value) ) )
-        reps.append( Representation( "#|Box id={0}|#".format(id(self)) ) )
+        reps.append( Representation(
+            "{0}".format(value),
+            level=Representation.LEVEL_INPUT_MORPHISM ))
+        reps.append( Representation(
+            "#|Box:{0}|#".format(value),
+            level=Representation.LEVEL_SYSTEM_INFORMATION) )
         ParselessConcept.__init__(
             self,
             parent_concept = parent_concept,
@@ -484,6 +607,8 @@ class CommandConcept( ParselessConcept ):
                   command_identifier,
                   arg_concepts ):
 
+        self.command_identifier = command_identifier
+
         # ok, the identifier for this concept is based on the
         # command identifier
         identifier = ( command_identifier, id(self) )
@@ -501,9 +626,9 @@ class CommandConcept( ParselessConcept ):
         reps.append( Representation(
             "{0}( {1} )".format(
                 command_identifier,
-                map(lambda c: c.representations[0].human_friendly(),
-                    arg_concepts) ) ) )
-        reps.append( Representation( "#|Command{0}|#".format(identifier) ) )
+                map(lambda c: c.preferred_representation().human_friendly(),
+                    arg_concepts) ),
+            level = Representation.LEVEL_HUMAN_SEMMANTICS ) )
 
         # ok, create baseclass
         ConceptBase.__init__(

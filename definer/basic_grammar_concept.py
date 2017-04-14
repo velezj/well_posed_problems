@@ -79,9 +79,6 @@ class BasicGrammarConcept( concept.ConceptBase ):
             c = self._symbol_concepts( symbol, state_parent )
             res.extend( c )
 
-        # make hte symbol concepts constituents of the statment concept
-        state_parent.constituent_concepts.extend( res )
-
         # return the statement concept
         return [ state_parent ]
 
@@ -104,11 +101,13 @@ class BasicGrammarConcept( concept.ConceptBase ):
                         
         reps = []
         reps.append( concept.Representation(
-            symbol ) )
+            symbol,
+            level=concept.Representation.LEVEL_INPUT_MORPHISM) )
         reps.append( concept.Representation(
-            "#|Symbol:{0}|#".format( symbol ) ) )
+            "#|Symbol:{0}|#".format( symbol ),
+            level = concept.Representation.LEVEL_SYSTEM_INFORMATION ) )
         c = BasicGrammarConcept(
-            parent_concept = self,
+            parent_concept = parent,
             constituent_concepts = [],
             context = concept.Context(),
             representations = reps)
@@ -129,13 +128,11 @@ class BasicGrammarConcept( concept.ConceptBase ):
         # ok, we create a top-level concept that is the
         # command itself
         # and create the concepts for the arguments
-        arg_concepts = self._concepts_from_statement( command.args, None )
         cmd = concept.CommandConcept(
             parent_concept = parent,
             command_identifier = command.cmd,
-            arg_concepts = arg_concepts )
-        for c in arg_concepts:
-            c.parent_concept = cmd
+            arg_concepts = [] )
+        arg_concepts = self._concepts_from_statement( command.args, cmd )
         return [ cmd ]
 
     ##
