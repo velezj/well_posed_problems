@@ -51,6 +51,7 @@ class CLI( object ):
             if self.current_interpreter_index is not None:
                 self._show_header( self.interpreters[self.current_interpreter_index],
                                    outstream )
+                self._discard_prompts( self.interpreters[self.current_interpreter_index])
 
             line = instream.readline()
             if line.startswith( ':/' ):
@@ -84,6 +85,13 @@ class CLI( object ):
 
         except:
             logger.exception("ERROR")
+
+
+    ##
+    # Discards all prompts for an interpreter by finishing them
+    def _discard_prompts( self, interp ):
+        for p in interp.state.prompts:
+            p.finish()
 
     ##
     # Display hte header showing hte user what concept and propmts we are in

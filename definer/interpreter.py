@@ -133,6 +133,11 @@ class InterpreterBase( object ):
         if not isinstance( c, concept.CommandConcept ):
             return
 
+        # first, unlink the command concept from the concept
+        # graph since we are going to fully use it and we
+        # don't want it poluting the namespace
+        c.unlink()
+
         # Ok, dispatch based on the command here for subclasses
         method_name = "_command_{0}".format( c.command_identifier )
         if hasattr( self, method_name ):
@@ -167,17 +172,34 @@ class InterpreterBase( object ):
     # Returns all matching concepts
     def _resolve_concept_reference( self, c, state ):
 
+        logger.info( "[{name}]: Starting _resolve_concept_reference for concept '{0}'".format(
+            c.debug_string(),
+            name = id(self) ) )
+
         # Ok, grab teh fully expanded forms of representations for
         # this concept
         c_fully_expanded_reps = concept.fully_expand_representations( c )
+        logger.info( "[{name}]:   fully expanded to: {0}".format(
+            c_fully_expanded_reps,
+            name=id(self) ) )
 
         # now, for each known concept, check if there is a match
         matching_concepts = []
         for c0 in self._all_concepts( state ):
 
+            # no self references
+            if c0 is c:
+                continue
+
+            logger.info( "[{name}]: checking match with {0}".format(
+                c0.debug_string(),
+                name=id(self) ) )
+
             # chekc if match
             if concept.any_rep_match( c_fully_expanded_reps,
                                       c0 ):
+                logger.info( "[{name}]: match found!".format(
+                    name=id(self) ) )
                 matching_concepts.append( c0 )
 
         # log some things
@@ -190,6 +212,60 @@ class InterpreterBase( object ):
         return matching_concepts
 
 
+    ##
+    # Given a Concept and a State, checks for a "matchind" concept
+    # that allows for the avility to be a sub-structure match.
+    # Unlike _resolve_concept_reference which enforces  a strict
+    # structure match, here we allow the Concept to be matched with
+    # another that has the subset in hte right order in the structure
+    # but could have more.
+    #
+    # The return value is a List[ List[ BreakMatchpoint ] ] objects,
+    # where a BreakMatchpoint determines where in the substructure the match
+    # occurs
+    def _resolve_concept_substructure_reference( self, c, state ):
+
+        logger.info( "[{name}]: Starting _resolve_concept_substructure_reference for concept '{0}'".format(
+            c.debug_string(),
+            name = id(self) ) )
+
+        # Ok, grab teh fully expanded forms of representations for
+        # this concept
+        c_fully_expanded_reps = concept.fully_expand_representations( c )
+        logger.info( "[{name}]:   fully expanded to: {0}".format(
+            c_fully_expanded_reps,
+            name=id(self) ) )
+
+        # now, for each known concept, check if there is a match
+        matching_concepts = []
+        for c0 in self._all_concepts( state ):
+
+            # no self references
+            if c0 is c:
+                continue
+
+            logger.info( "[{name}]: checking match with {0}".format(
+                c0.debug_string(),
+                name=id(self) ) )
+
+            # chekc if match
+            m = concept.any_rep_substructure_matches( c_fully_expanded_reps,
+                                                      c0 )
+            if m is not None and len(m) > 0:
+                logger.info( "[{name}]: #{0} matches found!".format(
+                    len(m),
+                    name=id(self) ) )
+                matching_concepts.append( m )
+
+        # log some things
+        logger.info( "[{name}]: resolved #{0} refs for '{1}'".format(
+            len(matching_concepts),
+            c.preferred_representation().human_friendly(),
+            name=id(self) ) )
+        
+        # return all the matches found
+        return matching_concepts
+        
 
     ##
     # retunrs all of the concepts in the given state.
@@ -225,8 +301,11 @@ class InterpreterBase( object ):
             name=id(self) ) )
 
         # ok, look for concept reference in the args
+        arg_c = cmd.constituent_concepts[0]
+        if len(arg_c.constituent_concepts) == 1:
+            arg_c = arg_c.constituent_concepts[0]
         concept_refs = self._resolve_concept_reference(
-            cmd.constituent_concepts[0],
+            arg_c,
             state )
 
         # show message if no concept reference found or too many

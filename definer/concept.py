@@ -174,6 +174,67 @@ def any_rep_match( expanded_reps, c ):
 
 ##=========================================================================
 
+
+##
+# Gien a fully expanded list of representations and
+# a concept, returns a lsit of SubstructeMatch entries
+# which represent points where any of the expanded reps
+# match part of the concept
+#
+# TODO: write this :)
+def any_rep_substructure_match( expanded_reps, c ):
+
+    # o, in hte expanded reps a List is treated as a choice (so any one
+    # inside must match) and a Tuple is treated as a structure.
+    # Since this is a substructure match we ignore the structure elements
+    # and only consider the *order* of the structure no it's size/bounds
+
+    # structure check
+    if isinstance( expanded_reps, tuple ):
+
+        # length of sturecture must match number of chicldren
+        if len( expanded_reps ) != len(c.constituent_concepts):
+            return False
+
+        # ok, lengths match so structure matches, let's dive in
+        # to their euality checks
+        for erep, c0 in zip( expanded_reps,
+                             c.constituent_concepts ):
+            match = any_rep_match( erep,
+                                   c0 )
+            if not match:
+                return False
+
+        # ok, structure matched and inner matched so yes
+        return True
+
+    # choice check
+    if isinstance( expanded_reps, list ):
+
+        # return true if any of them match
+        for erep in expanded_reps:
+            match = any_rep_match( erep, c )
+            if match:
+                return True
+
+        # ok, none of them matched so no match
+        return False
+
+    # neither tuple nor list, so this is an equality ocnstrain check
+    # on the concept's representations.  See if *any* of the
+    # representations match
+    for r in c.representations:
+        string = r.human_friendly()
+        match = ( expanded_reps == string )
+        if match:
+            return True
+
+    # ok, getting here means no representaion equaility matched using
+    # the human_friendly stirng, so no match
+    return False
+
+##=========================================================================
+
 ##
 # returns a lsit of the human friendly representations at the *leaves*
 # or edges of a concept
@@ -272,10 +333,29 @@ class ConceptBase( object ):
         return self.preferred_representation().human_friendly()
 
     ##
+    # Returns a debug string representing this concept
+    def debug_string(self):
+        leaves = leaves_human_reps( self )
+        return "{0}[id={1} leaves={2}]".format(
+            type(self).__name__,
+            self.identifier,
+            leaves )
+
+    ##
     # Return true if this is a top-level concept
     def is_toplevel(self):
         return self.parent_concept is None
 
+    ##
+    # Removes this concept from the concept graph
+    # by removing itself from it's parent constituents list
+    # and by setting it's parent ot None
+    def unlink( self ):
+        if self.parent_concept is not None:
+            if self in self.parent_concept.constituent_concepts:
+                self.parent_concept.constituent_concepts.remove( self )
+        self.parent_concept = None
+    
     ##
     # Method interface to "parse" input
     # and retunrs a List[ ConceptBase ]
