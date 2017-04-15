@@ -23,6 +23,7 @@ logger = logging.getLogger( __name__ )
 
 
 import itertools
+import collections
 
 ##=========================================================================
 
@@ -119,45 +120,21 @@ def fully_expand_representations( c ):
 
 ##=========================================================================
 
-def flatten1( x ):
-    if not isinstance( x, list ):
-        return x
-    res = []
-    for a in x:
-        if isinstance( a, list ):
-            res.extend( a )
-        else:
-            res.append( a )
-    return res
-
-def flatten2( x ):
-    if not isinstance( x, list ):
-        return x
-    res = []
-    for a in x:
-        if isinstance( a, list ):
-            res.append( map( flatten, a ) )
-        else:
-            res.append( a )
-    return res
-
-def flatten(S):
-    if not isinstance( S, list ):
-        return S
-    if S == []:
-        return S
-    if isinstance(S[0], list):
-        return flatten(S[0]) + flatten(S[1:])
-    return S[:1] + flatten(S[1:])
-
+IndexedMatchRep = collections.namedtuple( "IndexedMatchRep",
+                                          [ 'index',
+                                            'match' ] )
 
 ##
 # "flatten" a set of fully expanded respresentations to bsaically get
 # a list of flat choice paths. So every structure choice is removed and
 # treated as a flat possiblity which only consists of equality choices.
+#
+# The choices are represented as IndexedMatchRep instances so that
+# we can back out which part of hte original rep is responsible for
+# the given matching.  Each match= is a list of equality constraint for
+# a single element, so return is List[ IndexedMatchRep ] :)
 def flatten_fully_expanded_representations( expanded_reps,
-                                            current_path = [],
-                                            acum = [] ):
+                                            index = [] ):
 
     # If this is an atom, this is strange so raise error
     if not isinstance( expanded_reps, (list,tuple) ):
@@ -168,7 +145,8 @@ def flatten_fully_expanded_representations( expanded_reps,
     # and return
     if isinstance( expanded_reps, list ) and all(map(lambda x: not isinstance( x, (list,tuple) ), expanded_reps)):
         #logger.info( "Atom-flatten: returning {0}".format( [ expanded_reps ] ) )
-        return [ expanded_reps ]
+        return [ [ IndexedMatchRep( index=index,
+                                  match= expanded_reps ) ] ]
 
     # if we are a structure choice ( a tuple ) then we
     # just flatten each in order
@@ -176,25 +154,29 @@ def flatten_fully_expanded_representations( expanded_reps,
 
         # grab flattene for each child
         child_flats = []
-        for x in expanded_reps:
-            res = flatten_fully_expanded_representations( x,
-                                                          current_path = [],
-                                                          acum = [] )
+        for i,x in enumerate(expanded_reps):
+            res = flatten_fully_expanded_representations(
+                x,
+                index = index + [i] )
             child_flats.append( res )
-            logger.info( "Tuple-Flat: child {0} ==> {1}".format(
-                x, res ) )
+            #logger.info( "Tuple-Flat: child {0} ==> {1}".format(x, res ) )
 
         # now build up all product combinations of the flattened children
+        #logger.info( "Tuple-Flat: children_flats = {0}".format( child_flats ) )
         child_prod = itertools.product( *child_flats )
+        res = []
         for p in child_prod:
-            acum.append( current_path + list(p) )
-            logger.info( "Tuple-Flat: prod = {0}".format( p ) )
+            path = []
+            for x in p:
+                path.extend( x )
+            res.append( path )
+            #logger.info( "Tuple-Flat: prod = {0}   path ===> {1}".format(p,path ) )
 
         # return hte sulting acum
-        logger.info( "Tuple-flat: result {0} ==> {1}".format(
-            expanded_reps,
-            acum ) )
-        return acum
+        # logger.info( "Tuple-flat: result {0} ==> {1}".format(
+        #     expanded_reps,
+        #     res ) )
+        return res
 
     # ok, we are a list but have list or tuples inside so split into
     # the atoms and the tuples
@@ -210,27 +192,24 @@ def flatten_fully_expanded_representations( expanded_reps,
     # for them as a whole
     child_flats = []
     atom_flats = flatten_fully_expanded_representations( atoms,
-                                                         current_path = [],
-                                                         acum = [] )
+                                                         index = index )
     child_flats.extend( atom_flats )
-    logger.info( "Mixed-Flat: atom-flats = {0}".format( atom_flats ) )
+    #logger.info( "Mixed-Flat: atom-flats = {0}".format( atom_flats ) )
 
     # now each individual structure (tuple) is flattened and each will
     # be accumulated in
     for trep in tuples:
         res = flatten_fully_expanded_representations( trep,
-                                                      current_path = [],
-                                                      acum = [] )
+                                                      index = index)
         child_flats.extend( res )
-        logger.info( "Mixed-Flat: tuple {0} ==> {1}".format(
-            trep,
-            res ) )
+        #logger.info( "Mixed-Flat: tuple {0} ==> {1}".format(trep,res ) )
 
     # ok, now for each children's flattened we just accumulate
     # and return hte accumulation
+    res = []
     for p in child_flats:
-        acum.append( current_path + p )
-    return acum
+        res.append( p )
+    return res
 
 
 ##=========================================================================
