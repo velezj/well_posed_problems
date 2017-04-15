@@ -22,6 +22,8 @@ logger = logging.getLogger( __name__ )
 # strucute.
 
 
+import itertools
+
 ##=========================================================================
 
 ##
@@ -117,6 +119,122 @@ def fully_expand_representations( c ):
 
 ##=========================================================================
 
+def flatten1( x ):
+    if not isinstance( x, list ):
+        return x
+    res = []
+    for a in x:
+        if isinstance( a, list ):
+            res.extend( a )
+        else:
+            res.append( a )
+    return res
+
+def flatten2( x ):
+    if not isinstance( x, list ):
+        return x
+    res = []
+    for a in x:
+        if isinstance( a, list ):
+            res.append( map( flatten, a ) )
+        else:
+            res.append( a )
+    return res
+
+def flatten(S):
+    if not isinstance( S, list ):
+        return S
+    if S == []:
+        return S
+    if isinstance(S[0], list):
+        return flatten(S[0]) + flatten(S[1:])
+    return S[:1] + flatten(S[1:])
+
+
+##
+# "flatten" a set of fully expanded respresentations to bsaically get
+# a list of flat choice paths. So every structure choice is removed and
+# treated as a flat possiblity which only consists of equality choices.
+def flatten_fully_expanded_representations( expanded_reps,
+                                            current_path = [],
+                                            acum = [] ):
+
+    # If this is an atom, this is strange so raise error
+    if not isinstance( expanded_reps, (list,tuple) ):
+        raise RuntimeError( "Got atom which flattening expanded reps, should not happen" )
+
+    # Ok, if we are a list of atoms (non-lists/tuples) then
+    # we are a flat path so just add to accumulator the choice
+    # and return
+    if isinstance( expanded_reps, list ) and all(map(lambda x: not isinstance( x, (list,tuple) ), expanded_reps)):
+        #logger.info( "Atom-flatten: returning {0}".format( [ expanded_reps ] ) )
+        return [ expanded_reps ]
+
+    # if we are a structure choice ( a tuple ) then we
+    # just flatten each in order
+    if isinstance( expanded_reps, tuple ):
+
+        # grab flattene for each child
+        child_flats = []
+        for x in expanded_reps:
+            res = flatten_fully_expanded_representations( x,
+                                                          current_path = [],
+                                                          acum = [] )
+            child_flats.append( res )
+            logger.info( "Tuple-Flat: child {0} ==> {1}".format(
+                x, res ) )
+
+        # now build up all product combinations of the flattened children
+        child_prod = itertools.product( *child_flats )
+        for p in child_prod:
+            acum.append( current_path + list(p) )
+            logger.info( "Tuple-Flat: prod = {0}".format( p ) )
+
+        # return hte sulting acum
+        logger.info( "Tuple-flat: result {0} ==> {1}".format(
+            expanded_reps,
+            acum ) )
+        return acum
+
+    # ok, we are a list but have list or tuples inside so split into
+    # the atoms and the tuples
+    atoms = filter(lambda x: not isinstance( x, (list,tuple) ), expanded_reps)
+    lists = filter(lambda x: isinstance( x, list), expanded_reps )
+    tuples = filter(lambda x: isinstance( x, tuple), expanded_reps )
+
+    # ok, we do not expect any lsits so error if any found
+    if len(lists) > 0:
+        raise RuntimeError( "Can not handle nested lists in expanded rep: {0}".format( expanded_reps ) )
+
+    # ok, the atoms are all tretes a a single list so grap the flattene
+    # for them as a whole
+    child_flats = []
+    atom_flats = flatten_fully_expanded_representations( atoms,
+                                                         current_path = [],
+                                                         acum = [] )
+    child_flats.extend( atom_flats )
+    logger.info( "Mixed-Flat: atom-flats = {0}".format( atom_flats ) )
+
+    # now each individual structure (tuple) is flattened and each will
+    # be accumulated in
+    for trep in tuples:
+        res = flatten_fully_expanded_representations( trep,
+                                                      current_path = [],
+                                                      acum = [] )
+        child_flats.extend( res )
+        logger.info( "Mixed-Flat: tuple {0} ==> {1}".format(
+            trep,
+            res ) )
+
+    # ok, now for each children's flattened we just accumulate
+    # and return hte accumulation
+    for p in child_flats:
+        acum.append( current_path + p )
+    return acum
+
+
+##=========================================================================
+
 
 ##
 # Gien a fully expanded list of representations and
@@ -174,6 +292,28 @@ def any_rep_match( expanded_reps, c ):
 
 ##=========================================================================
 
+##
+# A class representing a substrcutre matching.
+# This includes all of the concepts and the start and end
+# constituents to use for each concept
+class SubstructureMatch( object ):
+
+    WHOLE_CONCEPT = "+whole+"
+
+    ##
+    # Creates a new match result with the given ordered concepts and
+    # their constituent ranges.
+    #
+    # THe ranges can be Tuple(start index, end index) or WHOLE_CONCEPT
+    # which means use hte entire concept
+    def __init__( self,
+                  concepts,
+                  constituent_ranges ):
+        self.concepts = concepts
+        self.constituent_ranges = constituent_ranges
+
+##=========================================================================
+
 
 ##
 # Gien a fully expanded list of representations and
@@ -181,13 +321,40 @@ def any_rep_match( expanded_reps, c ):
 # which represent points where any of the expanded reps
 # match part of the concept
 #
-# TODO: write this :)
-def any_rep_substructure_match( expanded_reps, c ):
+def any_rep_substructure_match( expanded_reps, c, include_child_submatches = True ):
 
     # o, in hte expanded reps a List is treated as a choice (so any one
     # inside must match) and a Tuple is treated as a structure.
     # Since this is a substructure match we ignore the structure elements
-    # and only consider the *order* of the structure no it's size/bounds
+    # and only consider the *order* of the structure not it's size/bounds
+
+    # Ok, we will bascially iterate over the possible substructures
+    # of the concept and see if we substructure match it :)
+    res = []
+
+    # first try a full match
+    full_match = any_rep_match( expanded_reps, c )
+    if full_match:
+
+        # build up a SubstructureMatch entry for the full match
+        res.append( SubstructureMatch(
+            concepts = [ c ],
+            constituent_ranges = [ SubstructureMatch.WHOLE_CONCEPT ] ) )
+
+    # Ok, if we found a full match and we do not want children submatches
+    # then we are done
+    if full_match and not include_child_submatches:
+        return res
+
+    # ok, iterate over two things:
+    #   1) the children concepts themselves and find any matches
+    #   2) suffixes of hte children as a concept and find any matches
+    # We are going to *approximate this* by flattening both the
+    # expanded representation and the concept and looking for
+    # suffixes
+    flattened_expanded_reps = flatten_fully_expanded_representations( expanded_reps )
+    flattened_c = flatten_fully_expanded_reps( fully_expand_representations( c ) )
+    
 
     # structure check
     if isinstance( expanded_reps, tuple ):
