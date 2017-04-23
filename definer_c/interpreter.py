@@ -290,6 +290,64 @@ class InterpreterBase( object ):
 
 
     ##
+    # Returns true iff the given SubstructureMatch represents a
+    # lifttable substructure.
+    #
+    # Liftale substructures do *not* span partially multiple concepts.
+    def _is_liftable_substructure_match( self, subm ):
+
+        # ok, check the number of partial concepts
+        num_partial = 0
+        for r in subm.constituent_ranges:
+            if r != SubstructureMatch.WHOLE_CONCEPT:
+                num_partial += 1
+
+        # we're good is no partial structures
+        if num_partial == 0:
+            return True
+
+        # we're also good if hte partial matches are in only a single concept
+        if len(subm.concepts) == 1:
+            return True
+
+        # otherwise we have a setting where we would have to "split"
+        # across different concepts and merge into a new one, which
+        # would break the concept graph single-parent constraint
+        return False
+
+    ##
+    # "Lift" a substrcutre Match (if if can be lifted)
+    #
+    # returns a new Concept which has been added to the concept graph
+    def _lift_substructure_match( self, subm ):
+        if not self._is_liftable_substructure_match( subm ):
+            return None
+
+        # ok, check whether we even have to split a concept or jsut
+        # add a parent layer
+        if all(map(lambda r: r == SubstructureMatch.WHOLE_CONCEPT),
+               subm.constituent_ranges ):
+
+            # we jsut need to add a parent.
+            # what a nice case we have here :) ... or not heheheh
+
+            # ok, so we need to first find the latest common ancestor
+            # for each of the wholly used nodes
+            # Note: tehre is always a root so we always have one ancestor :)
+            ancestors = map(lambda c: concept.ancestors(c),
+                            subm.concepts)
+            longest_common_ancestors = longest_common_prefix( ancestors )
+            ancestral_parent = longest_common_ancestors[-1]
+
+            # ok, now we need to choose the constituents of the *ancestor* as
+            # the constituents of hte new concept
+            ancestral_constituents = []
+            for ancs in ancestors:
+                pass 
+            parent_c = basic_grammar_concept.BasicGrammarConcept(
+                parent_concept = 
+
+    ##
     # Interpret an EnterConcept command
     #
     # This tries to match the argument concept with any known
@@ -326,7 +384,78 @@ class InterpreterBase( object ):
             state.current_concept = concept_refs[0]
             logger.info( "Changing current_concept to '{0}'".format(
                 state.current_concept.preferred_representation().human_friendly()) )
-            
+
+
+    ##
+    # Performs the EnterPartial command.
+    #
+    # This will try to resolve the given argument as a Substructure match
+    # (hence the "partial" part) and will
+    # hange the current concept if a single reference was found
+    # This will create a new Concept in the concept graph with the
+    # substructure match if need be
+    #
+    # This new concept creation will only succeed *if* the substructure
+    # consists of ranges only in the first and last concept so
+    # that it can be "lifted" with no problems
+    def _command_enter_partial( self, cmd, state ):
+
+        logger.info( "[{name}]: COMMAND[enter_concept] started".format(
+            name=id(self) ) )
+
+        # ok, look for concept reference in the args
+        arg_c = cmd.constituent_concepts[0]
+        if len(arg_c.constituent_concepts) == 1:
+            arg_c = arg_c.constituent_concepts[0]
+        matches = self._resolve_concept_substructure_reference(
+            arg_c,
+            state )
+
+        # show message if no concept reference found or too many
+        if len(matches) == 0:
+            state.prompts.append(
+                MessagePrompt(
+                    "Could not find concept to enter!",
+                    self ) )
+        elif len(matches) > 1:
+            state.prompts.append(
+                MessagePrompt(
+                    "Concept to enter is Ambiguous found #{0} matches".format(
+                        len(matches) ),
+                    self ) )
+        else:
+
+            # ok, found a single match, see if we can create a new concept
+            # for it
+
+            # check if it is just a single concept, in which case
+            # we can just change to it
+            if self._substructure_match_is_whole( matches[0] ):
+                
+                state.current_concept = matches[0].concepts[0]
+                logger.info( "Changing current_concept to '{0}'".format(
+                    state.current_concept.preferred_representation().human_friendly()) )
+
+            # ok, now check if it is a liftable substructure
+            elif self._is_liftable_substructure_match( matches[0] ):
+
+                # it is liftable, so lift it and assign new lifted concept
+                # as current conceopt
+                newc = self._lift_substructure_match( matches[0] )
+                state.current_concept = newc
+                logger.info( "Changing current_concept to '{0}'".format(
+                    state.current_concept.preferred_representation().human_friendly()) )
+
+            else:
+
+                # we are not a single or liftable substructure!
+                # this is an error
+                state.prompts.append(
+                    MessagePrompt(
+                        "Found substructure is not liftable as a concept, concept graoh would break if substructure treated as a unit. Try selecting a higher parent structure to enter which encompases all children",
+                        self ) )
+                
+                
 
     ##
     # Performs the LeaveConcept command

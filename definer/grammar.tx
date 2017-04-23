@@ -1,0 +1,52 @@
+Program:
+  expressions+=Expression
+;
+
+Expression:
+  Action | Statement
+;
+
+Action:
+  Command | BindExpression | ContextExpression
+;
+
+Identifier:
+  /\S+/
+;
+
+Command[noskipws]:
+  /\s+/ /[\\]/ cmd=Identifier arg=/[^\r\n]*/
+;
+
+BindExpression:
+  slot=Identifier ':=' binding=/[^\r\n]+/
+;
+
+ContextExpression:
+  ctx=StartOfContext body=ContextBody '%%%' 
+;
+
+StartOfContext[noskipws]:
+  /\s*/- '%%'- /[^ \t\r\n%]*/ '%'- /\s*/-
+;
+
+ContextBody[noskipws]:
+  /([^%][^%][^%])+/
+;
+
+Statement:
+  parts+=StatementPart EndOfStatement?
+;
+
+EndOfStatement:
+  ";;"
+;
+
+StatementPart:
+  !(Action | EndOfStatement ) ( "[["- Statement "]]"- ) | Symbol
+;
+
+Symbol:
+  !("[[" | "]]" | ";;" | "%%" ) /\S+/
+;
+

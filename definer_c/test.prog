@@ -1,0 +1,27 @@
+A first statment
+
+[[ and now a block statemnt ]]
+
+These are just
+a Set of
+Statements
+
+%%
+import numpy as np
+
+def foo( a ):
+    return a + 1
+
+for x in World:
+    assert( foo( x ) == 2 )
+%%
+
+And back to statements
+
+%end with some arguments [[ that are blocked ]] %
+
+And some more statements
+
+[[ and some fancy [[ double blocked ]] statements [[ with pleasure ]] ]]
+
+and some more stuff

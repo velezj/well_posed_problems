@@ -291,6 +291,19 @@ class SubstructureMatch( object ):
         self.concepts = concepts
         self.constituent_ranges = constituent_ranges
 
+##
+# Internal submatch sturectu to keep tack of backrefs
+class SubmatchRefs( object ):
+    def __init__( self,
+                  flat_rep,
+                  position,
+                  indices,
+                  concept):
+        self.flat_rep = flat_rep
+        self.position = position
+        self.indices = indices
+        self.concept = concept
+
 ##=========================================================================
 
 
@@ -325,59 +338,145 @@ def any_rep_substructure_match( expanded_reps, c, include_child_submatches = Tru
     if full_match and not include_child_submatches:
         return res
 
-    # ok, iterate over two things:
-    #   1) the children concepts themselves and find any matches
-    #   2) suffixes of hte children as a concept and find any matches
-    # We are going to *approximate this* by flattening both the
-    # expanded representation and the concept and looking for
-    # suffixes
+    # So let us generate a flattened set of representations for
+    # both the expanded representations given (what we are looking *for*)
+    # and the gicen concept (what we are looking *in*).
     flattened_expanded_reps = flatten_fully_expanded_representations( expanded_reps )
     flattened_c = flatten_fully_expanded_reps( fully_expand_representations( c ) )
-    
 
-    # structure check
-    if isinstance( expanded_reps, tuple ):
+    # triple for-loop time :(
+    # So we will see if any of the flat reps looking *for*
+    # are a match in any of hte flat reps *in*, and we
+    # need to check at all starting points of the *in* reps
+    sub_matches = []
+    for looking_for_flat_rep in flattened_expanded_reps:
+        for looking_in_flat_rep in flattened_c:
 
-        # length of sturecture must match number of chicldren
-        if len( expanded_reps ) != len(c.constituent_concepts):
-            return False
+            # check size and compute position ranges we need to search in
+            if len(looking_for_flat_rep) > len(looking_in_flat_rep):
+                continue # no match possible
+            max_pos = len(looking_in_flat_rep) - len(looking_for_flat_rep)
 
-        # ok, lengths match so structure matches, let's dive in
-        # to their euality checks
-        for erep, c0 in zip( expanded_reps,
-                             c.constituent_concepts ):
-            match = any_rep_match( erep,
-                                   c0 )
-            if not match:
-                return False
+            # ok, search starting at every position
+            for pos in xrange( 0, max_pos + 1 ):
 
-        # ok, structure matched and inner matched so yes
-        return True
+                # check if two flat representations match and
+                # store the resulting matching indices
+                in_indices = []
+                for for_check, in_check in zip( looking_for_flat_rep,
+                                                looking_in_flat_rep[pos:] ):
 
-    # choice check
-    if isinstance( expanded_reps, list ):
+                    # if there is an intersection in the matches we are good
+                    mint = set(for_check.match) & set(in_check.match)
 
-        # return true if any of them match
-        for erep in expanded_reps:
-            match = any_rep_match( erep, c )
-            if match:
-                return True
+                    # if we find a match, store it
+                    if len(mint) > 0:
+                        sub_matches.append(
+                            SubmatchRefs(
+                                looking_in_flat_rep,
+                                pos,
+                                map(lambda imr: imr.index,
+                                    looking_in_flat_rep[pos:]),
+                                c))
 
-        # ok, none of them matched so no match
-        return False
+    # ok, now convert internal submatch structures to the actual
+    # results    
+    for subm in sub_matches:
 
-    # neither tuple nor list, so this is an equality ocnstrain check
-    # on the concept's representations.  See if *any* of the
-    # representations match
-    for r in c.representations:
-        string = r.human_friendly()
-        match = ( expanded_reps == string )
-        if match:
-            return True
+        # resolve the acual concept objects used from
+        # the indices
+        res.append( submatch_ref_to_substructure_match(
+            sumb,
+            c ) )
 
-    # ok, getting here means no representaion equaility matched using
-    # the human_friendly stirng, so no match
-    return False
+    # return substructure matches
+    return res
+
+##=========================================================================
+
+##
+# Concerts from a SubmatchRef to an SubstructureMatch
+def submatch_ref_to_substructure_match( subm, c ):
+
+    concepts = []
+    ranges = []
+    curc = None
+    currange = None
+    curprefix = None
+    for idx in subm.indices:
+
+        # check if we want to add the whole oncept
+        if idx == []:
+
+            # ok, use a whole concept so add currecnt and
+            # add new
+            if curc is not None:
+                concepts.append( curc )
+                ranges.append( currange )
+                curc = None
+                currange = None
+                curprefix = None
+
+            # add this whole concept
+            concept.append( c )
+            ranges.append( SubstructureMatch.WHOLE_CONCEPT )
+
+        # ok, not the whoe concept so
+        # accumulate
+        else:
+
+            # if no previously accumulating concept, start one
+            if curc is None:
+                curc = _get_concept_using_index( c, idx )
+                currange = [ idx[-1], idx[-1] ]
+                curprefix = idx[:-1]
+
+            else:
+                
+                # ok, we were accumulating, check wether we are done and
+                # need to store accumulatn and start a new one
+                if idx[:-1] == curprefix:
+
+                    # we are still within the same parent concept, so
+                    # just increment range
+                    currange[1] = idx[-1]
+
+                else:
+
+                    # different preffix means we are done with accumulant, store
+                    concepts.append( curc )
+                    ranges.append( currange )
+                    curc = None
+                    currange = None
+                    curprefix = None
+
+                    # start a new one accumulant
+                    curc = _get_concept_using_index( c, idx )
+                    currange = [ idx[-1], idx[-1] ]
+                    curprefix = idx[:-1]
+
+    # store last accumulant if any
+    if curc is not None:
+        concepts.append( curc )
+        ranges.append( currange )
+
+    # return a new SubstructureMatch
+    return SubstructureMatch(
+        concepts = concepts,
+        constituent_ranges = ranges )
+        
+##=========================================================================
+
+##
+# returns a constitunet concept gicen and index structure.
+# And index is a list of constituent indices (as numbers)
+# so really it's just a path down the concept graph of sequential
+# constituent_concept indices :)
+def _get_concept_using_index( parent, index ):
+    if index == []:
+        return parent
+    return _get_concept_using_index( parent.constituent_concepts[ index[0] ],
+                                     index[1:] )
 
 ##=========================================================================
 

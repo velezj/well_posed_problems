@@ -1,27 +1,20 @@
-A first statment
+This is a test statement
+With another line in the same statement below
 
-[[ and now a block statemnt ]]
+And then a binding below this:
 
-These are just
-a Set of
-Statements
+w := 7
 
-%%
-import numpy as np
+And now we have [[ A more compliated form that works ]] for a bit
+;;
 
-def foo( a ):
-    return a + 1
+So le'ts try [[ a more
+spatially varied statement ]] with some
+jaxz
 
-for x in World:
-    assert( foo( x ) == 2 )
-%%
-
-And back to statements
-
-%end with some arguments [[ that are blocked ]] %
+%%python%
+We are in a context here
+%%%
 
 And some more statements
 
-[[ and some fancy [[ double blocked ]] statements [[ with pleasure ]] ]]
-
-and some more stuff
