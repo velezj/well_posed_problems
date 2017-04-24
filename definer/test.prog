@@ -21,7 +21,11 @@ And some more statements
 Let's start with some commands
 \enter A very interesting thing here
 
-e := 5
+e := "A string here"
+
+WorldNode := #|Node=399289|#
+
+The_World := the world to test
 
 %%python%
 import numpy as np

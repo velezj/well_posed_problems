@@ -19,7 +19,27 @@ Command[noskipws]:
 ;
 
 BindExpression:
-  slot=Identifier ':=' binding=/[^\r\n]+/
+  slot=Identifier ':=' binding=BindValue
+;
+
+BindValue:
+  POD | Reference
+;
+
+POD:
+  STRING | INT | FLOAT | BOOL
+;
+
+Reference:
+  ExplicitNodeReference | ImplicitReference
+;
+
+ExplicitNodeReference[noskipws]:
+  /\s*/ "#|Node=" id=INT "|#" /\s*/
+;
+
+ImplicitReference[noskipws]:
+  ref=/[^\r\n]+/
 ;
 
 ContextExpression:

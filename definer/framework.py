@@ -1,3 +1,8 @@
+##
+## Copyright Javier Velez <velezj@alum.mit.edu> April 2017
+## All Rights Reserved
+##
+
 import logging
 logger = logging.getLogger( __name__ )
 
@@ -240,6 +245,11 @@ class Node( object ):
         self.context[ identifier ] = value
 
     ##
+    # Binds hte definition for this node
+    def bind_definition( self, definition ):
+        self.context.bind_definition( definition )
+
+    ##
     # Lookup any bindings for an identifier
     #
     # Here we define the conceopt of a 'shadowing' of
@@ -318,6 +328,11 @@ class Node( object ):
     def __repr__(self):
         return self.__str__()
 
+    ##
+    # returns a human-friendly representation of this node
+    def human_friendly( self ):
+        return "Node[{0}]".format( self.natural_token_structure.human_friendly() )
+
 ##========================================================================
 
 ##
@@ -363,8 +378,29 @@ class TokenStructure( object ):
         return s
     def __repr__(self):
         return self.__str__()
+
+    ##
+    # A Human-friendly representation
+    def human_friendly( self ):
+        s = ' '.join(
+            map(lambda t: "{0}".format(t) if not isinstance(t,TokenStructure) else t.human_friendly(),
+                self.tokens ) )
+        return s
     
 ##========================================================================
+
+##
+# An atomic token-structure for a message
+def message_token_structure( message ):
+    return TokenStructure( [ message ] )
+
+##========================================================================
+
+##
+# A top-level node that is just a message
+def message_node( message ):
+    return Node( message_token_structure( message ) )
+
 ##========================================================================
 ##========================================================================
 
