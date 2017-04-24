@@ -18,3 +18,16 @@ We are in a context here
 
 And some more statements
 
+Let's start with some commands
+\enter A very interesting thing here
+
+e := 5
+
+%%python%
+import numpy as np
+np.log( e )
+%%%
+
+\leave that thing
+
+And finish 

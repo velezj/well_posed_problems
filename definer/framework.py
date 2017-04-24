@@ -38,122 +38,6 @@ class Context( dict ):
 ##========================================================================
 
 ##
-# A Node is a particular concept.
-# It internally has a set of representations (also nodes) which
-# are alternatives to this node. It also contians a set of
-# "pieces" which are nodes that are not strictly alternatives to the
-# node but may be subparts of it.
-# Every node also has a "natural token structure" (which may be None)
-# that is how hte node was created
-#
-# Nodes all have a Context associanted and most impoirtantly know
-# how to lookup bindings within themselves and their parents
-class Node( object ):
-
-    ##
-    # Creates a new Node
-    def __init__( self,
-                  natural_token_structure,
-                  representations = [],
-                  pieces = [],
-                  is_representation_of = [],
-                  is_piece_of = [],
-                  context = Context() ):
-        self.natural_token_structure = natural_token_structure
-        self.representations = representations
-        self.pieces = pieces
-        self.is_representation_of = is_representation_of
-        self.is_piece_of = is_piece_of
-        self.context = context
-
-
-    ##
-    # Adds the given node as a representation
-    def add_representation( self, node ):
-
-        # ok, add to this node's list (if not already tehre)
-        # and also add to the given node's is_representation_of
-        if node not in self.representations:
-            self.representations.append( node )
-        if self not in node.is_representation_of:
-            node.is_representation_of.append( self )
-            
-
-    ##
-    # Add the given node as a piece of this node
-    def add_piece( self, node ):
-        if node is not in self.pieces:
-            self.pieces.append( node )
-        if self not in node.is_piece_of:
-            node.is_piece_of.append( self )
-
-    ##
-    # Binds a given identifier to a given value in this
-    # node's context
-    def bind( self,
-              identifier,
-              value ):
-        self.context[ identifier ] = value
-
-    ##
-    # Lookup any bindings for an identifier
-    #
-    # Here we define the conceopt of a 'shadowing' of
-    # a binding. This will return a list of the possible
-    # bindings for an identifier that are not shadowed.
-    #
-    # The lookup procedure is as follows:
-    # 1) if the identifier is directly bound in this node,
-    #    then this binding shadows all others and is the only
-    #    one returned
-    # 2) Any bindings in the *pieces* of this node
-    #    are searched for and all such bindings are returned.
-    #    So piece bindings do not shadow each other
-    # 3) If there are no bindings in the pieces either, we will
-    #    lookup the bindings in any of our parental representation
-    #    nodes ( the is_representation_of list) and return all such
-    #    bindings. So representational parents do not shadow each
-    #    other
-    #
-    # The return result is always a list (but may be empty)
-    # if Binding objects
-    def lookup_bindings( self, identifier, path_acum = NodePath() ):
-
-        # ok, search for direct binding and return if found
-        if identifier in self.context:
-            return [ Binding(
-                path = path_acum.add_direct_step( self ),
-                identifier = identifier,
-                value = self.context[ identifier ] ) ]
-
-        # Ok, search the pieces
-        bindings = []
-        for piece in self.pieces:
-            piece_bindings = piece.lookup_bindings(
-                identifier,
-                path_acum = path_acum.add_piece_step( self, piece ) )
-            bindings.extend( piece_bindings )
-
-        # return these bindings if any found in pieces
-        if len(bindings) > 0:
-            return bindings
-
-        # Ok, no binding in hte pieces means we search our
-        # parental representations
-        for parental_rep in self.is_representation_of:
-            parental_bindings = parental_rep.lookup_bindings(
-                identifier = identifier,
-                path_acum = path_acum.add_parental_representation_step(
-                    self,
-                    parental_rep ) )
-            bindings.extend( parental_bindings )
-
-        # Ok, return any bindings from parental representations
-        return bindings
-        
-##========================================================================
-
-##
 # A NodePath is a serie of steps thorugh a node graph.
 # This is an *immutable* functional object that is usyually used to
 # accumulate a path as we are traversing the node graph.
@@ -180,7 +64,7 @@ class NodePath( object ):
     class DirectStep( Step ):
         __slots__ = ()
         def __new__( cls, node ):
-            self = super( DirectStep, cls ).__new__( cld, None, node )
+            self = super( NodePath.DirectStep, cls ).__new__( cls, None, node )
             return self
 
     ##
@@ -188,8 +72,8 @@ class NodePath( object ):
     class PieceStep( Step ):
         __slots__ = ()
         def __new__( cls, node, piece ):
-            self = super( PieceStep, cls ).__new__(
-                cld,
+            self = super( NodePath.PieceStep, cls ).__new__(
+                cls,
                 ( 'pieces', node ) ,
                 piece )
             return self
@@ -199,8 +83,8 @@ class NodePath( object ):
     class RepresentationStep( Step ):
         __slots__ = ()
         def __new__( cls, node, rep ):
-            self = super( RepresentationStep, cls ).__new__(
-                cld,
+            self = super( NodePath.RepresentationStep, cls ).__new__(
+                cls,
                 ( 'representations', node ) ,
                 rep )
             return self
@@ -211,8 +95,8 @@ class NodePath( object ):
     class ParentalRepresentationStep( Step ):
         __slots__ = ()
         def __new__( cls, node, parental_rep ):
-            self = super( ParentalRepresentationStep, cls ).__new__(
-                cld,
+            self = super( NodePath.ParentalRepresentationStep, cls ).__new__(
+                cls,
                 ( 'is_representation_of', node ) ,
                 parental_rep )
             return self
@@ -222,8 +106,8 @@ class NodePath( object ):
     class ParentalPieceStep( Step ):
         __slots__ = ()
         def __new__( cls, node, parental_piece ):
-            self = super( ParentalPieceStep, cls ).__new__(
-                cld,
+            self = super( NodePath.ParentalPieceStep, cls ).__new__(
+                cls,
                 ( 'is_piece_of', node ) ,
                 parental_piece )
             return self
@@ -254,38 +138,185 @@ class NodePath( object ):
     # ends of a NodePath representing a goal or  start
     def add_direct_step( self, node ):
         s = list(self.steps)
-        s.append( DirectStep( node ) )
+        s.append( NodePath.DirectStep( node ) )
         return NodePath( s )
 
     ##
     # Add a new step taken into a piece of a node
     def add_piece_step( self, node, piece ):
         s = list(self.steps)
-        s.append( PieceStep( node, piece ) )
+        s.append( NodePath.PieceStep( node, piece ) )
         return NodePath( s )
 
     ##
     # Add a new step taken into a representation of a node
     def add_representation_step( self, node, rep ):
         s = list(self.steps)
-        s.append( RepresentationStep( node, rep ) )
+        s.append( NodePath.RepresentationStep( node, rep ) )
         return NodePath( s )
 
     ##
     # Add a new step taken into a parental representation of node
     def add_parental_representation_step( self, node, parental_rep ):
         s = list(self.steps)
-        s.append( ParentalRepresentationStep( node, parental_rep ) )
+        s.append( NodePath.ParentalRepresentationStep( node, parental_rep ) )
         return NodePath( s )
 
     ##
     # Add a new step taken into a parental piece of node
     def add_parental_piece_step( self, node, parental_piece ):
         s = list(self.steps)
-        s.append( ParentalPieceStep( node, parental_piece ) )
+        s.append( NodePath.ParentalPieceStep( node, parental_piece ) )
         return NodePath( s )
 
-    
+
+    ##
+    # A more readable representation
+    def __str__(self):
+        return "Path{0}".format( self.steps )
+    def __repr__(self):
+        return self.__str__()
+
+##========================================================================
+
+##
+# A Node is a particular concept.
+# It internally has a set of representations (also nodes) which
+# are alternatives to this node. It also contians a set of
+# "pieces" which are nodes that are not strictly alternatives to the
+# node but may be subparts of it.
+# Every node also has a "natural token structure" (which may be None)
+# that is how hte node was created
+#
+# Nodes all have a Context associanted and most impoirtantly know
+# how to lookup bindings within themselves and their parents
+class Node( object ):
+
+    ##
+    # Creates a new Node
+    def __init__( self,
+                  natural_token_structure,
+                  representations = [],
+                  pieces = [],
+                  is_representation_of = [],
+                  is_piece_of = [],
+                  context = None ):
+        self.natural_token_structure = natural_token_structure
+        self.representations = list(representations)
+        self.pieces = list(pieces)
+        self.is_representation_of = list(is_representation_of)
+        self.is_piece_of = list(is_piece_of)
+        self.context = context
+        if self.context is None:
+            self.context = Context()
+
+
+    ##
+    # Adds the given node as a representation
+    def add_representation( self, node ):
+
+        # ok, add to this node's list (if not already tehre)
+        # and also add to the given node's is_representation_of
+        if node not in self.representations:
+            self.representations.append( node )
+        if self not in node.is_representation_of:
+            node.is_representation_of.append( self )
+            
+
+    ##
+    # Add the given node as a piece of this node
+    def add_piece( self, node ):
+        if node not in self.pieces:
+            self.pieces.append( node )
+        if self not in node.is_piece_of:
+            node.is_piece_of.append( self )
+
+    ##
+    # Binds a given identifier to a given value in this
+    # node's context
+    def bind( self,
+              identifier,
+              value ):
+        self.context[ identifier ] = value
+
+    ##
+    # Lookup any bindings for an identifier
+    #
+    # Here we define the conceopt of a 'shadowing' of
+    # a binding. This will return a list of the possible
+    # bindings for an identifier that are not shadowed.
+    #
+    # The lookup procedure is as follows:
+    # 1) if the identifier is directly bound in this node,
+    #    then this binding shadows all others and is the only
+    #    one returned
+    # 2) Any bindings in the *pieces* of this node
+    #    are searched for and all such bindings are returned.
+    #    So piece bindings do not shadow each other but do shadow
+    #    any parental bindings
+    # 3) If there are no bindings in the pieces either, we will
+    #    lookup the bindings in any of our parental representation
+    #    nodes ( the is_representation_of list) and return all such
+    #    bindings. So representational parents do not shadow each
+    #    other. Also search the parent pieces as well. All
+    #    aprental relations (pieces and representations) are non-shadowing
+    #    of each other :)
+    #
+    # The return result is always a list (but may be empty)
+    # if Binding objects
+    def lookup_bindings( self, identifier, path_acum = NodePath() ):
+
+        # ok, search for direct binding and return if found
+        if identifier in self.context:
+            return [ Binding(
+                path = path_acum.add_direct_step( self ),
+                identifier = identifier,
+                value = self.context[ identifier ] ) ]
+
+        # Ok, search the pieces
+        bindings = []
+        for piece in self.pieces:
+            piece_bindings = piece.lookup_bindings(
+                identifier,
+                path_acum = path_acum.add_piece_step( self, piece ) )
+            bindings.extend( piece_bindings )
+
+        # return these bindings if any found in pieces
+        if len(bindings) > 0:
+            return bindings
+
+        # Ok, no binding in hte pieces means we search our
+        # parental representations *and* out parental pieces
+        for parental_rep in self.is_representation_of:
+            parental_bindings = parental_rep.lookup_bindings(
+                identifier = identifier,
+                path_acum = path_acum.add_parental_representation_step(
+                    self,
+                    parental_rep ) )
+            bindings.extend( parental_bindings )
+        for parental_pieces in self.is_piece_of:
+            parental_bindings = parental_piece.lookup_bindings(
+                identifier = identifier,
+                path_acum = path_acum.add_parental_piece_step(
+                    self,
+                    parental_piece ) )
+            bindings.extend( parental_bindings )
+
+        # Ok, return any bindings from parental representations
+        return bindings
+
+
+    ##
+    # A more human firendly representation
+    def __str__(self):
+        s = "Node<{0} #{1}reps, #{2}pieces id={3}>".format(
+            self.natural_token_structure,
+            len(self.representations),
+            len(self.pieces),
+            id(self) )
+        return s
+    def __repr__(self):
+        return self.__str__()
 
 ##========================================================================
 
@@ -336,6 +367,25 @@ class TokenStructure( object ):
 ##========================================================================
 ##========================================================================
 ##========================================================================
+
+##
+#
+def test_nodes_0():
+
+    # create some nodes
+    n0 = Node(TokenStructure([0]))
+    n0.bind( 'j', 0 )
+    for i in xrange( 1, 10 ):
+        n = Node( TokenStructure( [ i ] ) )
+        n0.add_representation( n )
+        n.bind( 'i', i )
+
+    # find the bindings
+    bindings = n0.lookup_bindings( 'i' )
+
+    logger.info( "Bindings for 'i': {0}".format( bindings ) )
+    return n0
+
 ##========================================================================
 ##========================================================================
 ##========================================================================

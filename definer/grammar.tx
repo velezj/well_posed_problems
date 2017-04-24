@@ -15,7 +15,7 @@ Identifier:
 ;
 
 Command[noskipws]:
-  /\s+/ /[\\]/ cmd=Identifier arg=/[^\r\n]*/
+  /\s+/ /[\\]/ cmd=Identifier /\s+/ arg=/[^\r\n]*/
 ;
 
 BindExpression:
@@ -47,6 +47,6 @@ StatementPart:
 ;
 
 Symbol:
-  !("[[" | "]]" | ";;" | "%%" ) /\S+/
+  !("[[" | "]]" | EndOfStatement | "%%" ) /\S+/
 ;
 
