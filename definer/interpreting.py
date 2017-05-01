@@ -13,6 +13,8 @@ logger = logging.getLogger( __name__ )
 
 import parsing
 import framework
+import node_utilities
+
 
 ##========================================================================
 
@@ -186,17 +188,25 @@ class InterpreterBase( object ):
         elif value.__class__.__name__ == 'ImplicitReference':
 
             # try to find a node for hte implicit reference
-            node = self.find_node_by_implicit_reference( value.ref )
+            nodes = self.find_nodes_by_implicit_reference( value.ref )
 
             # if no node, this is an error
-            if node is None:
+            if nodes is None or len(nodes) == 0:
                 self.error_prompt( "Unable to find Node referenced (implicitly) for slot '{0}' as '{1}'".format( expr.slot, value.ref ) )
                 return
 
+            # if more than one node, this is ambiguous
+            if len(nodes) > 1:
+                self.error_prompt( "Found #{0} matching nodes for implicit reference slot '{1}' as '{2}'".format(
+                    len(nodes),
+                    expr.slot,
+                    value.ref ) )
+                return
+            
             # Ok, found node so make binding
             self.state.current_node.bind(
                 expr.slot,
-                node )
+                nodes[0] )
         else:
 
             # unknown binding type
@@ -225,10 +235,17 @@ class InterpreterBase( object ):
     # Convert from a Statement to a Node representing it
     def _statement_to_node( self, expr ):
 
+        return framework.Node(
+            self._statement_to_token_structure( expr ) )
+
+    ##
+    # Convert a Statment to a TokenStructure
+    def _statement_to_token_structure( self, expr ):
+
         # We will convert ubsstatments into TokenSequences :)
         if isinstance( expr, list):
-            toks = map(lambda t: self._statement_to_node( t ), expr )
-            return framework.TokenSequence( toks )
+            toks = map(lambda t: self._statement_to_token_structure( t ), expr )
+            return framework.TokenStructure( toks )
 
         # A statement should become a tokensequence of hte parts
         if expr.__class__.__name__ == 'Statement':
@@ -236,10 +253,10 @@ class InterpreterBase( object ):
             # special case where we only have a single Statement as part
             # we will flatten this
             if len( expr.parts ) == 1 and expr.parts[0].__class__.__name__ == 'Statement':
-                return self._statement_to_node( expr.parts[0] )
+                return self._statement_to_token_structure( expr.parts[0] )
 
             # we jsut return the tokensewuence of the parts
-            return self._statement_to_node( expr.parts )
+            return self._statement_to_token_structure( expr.parts )
 
         # Ok, not a list or a Statment menas we are a token, pass thorugh
         return expr
@@ -265,14 +282,58 @@ class InterpreterBase( object ):
             parent = self,
             message = message,
             name = name ) )
+
+
+    ##
+    # Find a node by a given id.
+    # We return the found node, or None
+    def _find_node_by_id( self, node_id ):
+
+        # we will simply walk the node graph, returning when
+        # we have found a node with the given id
+        found_node = None
+        def _visit(node):
+            if node.node_id() == node_id:
+                found_node = node
+        def _terminate( q, visited):
+            return found_node is not None
+        node_visitor = node_utilities.NodeVisitor(
+            visitor=_visit,
+            termintor=_terminate )
+        node_visitor.visit( self.state.toplevel_nodes )
+
+        # ok, return found_node
+        return found_node
+
+    ##
+    # Find a node by an 'implicit" reference.
+    # This will find a set of nodes which have the same TokenStructure
+    # as the given reference
+    def find_nodes_by_implicit_reference( self, reference ):
+
+        # ok, so a reference is a Statement so first grab the
+        # TokenStructure for the references
+        ref_token_structure = self._statement_to_token_structure( reference )
+
+        # now we will find all nodes in the node graph with the
+        # exct same token structure
+        found_nodes = []
+        def _visit(node):
+            if node.natural_token_structure == ref_token_structure:
+                found_nodes.append( node )
+        node_visitor = node_utilities.NodeVisitor(
+            visitor=_visit )
+
+        # ok, return hte nodes
+        return found_nodes
         
 ##========================================================================
 
 ##
-# A Prompt is just an InterpresterBase that also has a parent .
+# A Prompt is just an InterpreterBase that also has a parent .
 # Subclasses of Prompts will have functionality for things like
 # message reporting as well as questions (yes/no or otherwise)
-class PromptBase( InterpresterBase ):
+class PromptBase( InterpreterBase ):
 
     ##
     # Creates a new PromptBase with given interpreter as parent
@@ -283,7 +344,7 @@ class PromptBase( InterpresterBase ):
         self.parent = parent
         super( PromptBase, self ).__init__(
             name,
-            state = InterpresterBase.State(),
+            state = InterpreterBase.State(),
             parser = parser )
 
     

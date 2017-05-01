@@ -215,6 +215,10 @@ class Node( object ):
         if self.context is None:
             self.context = Context()
 
+    ##
+    # returns the id of this node
+    def node_id(self):
+        return id(self)
 
     ##
     # Adds the given node as a representation

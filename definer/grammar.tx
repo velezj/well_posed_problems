@@ -38,8 +38,8 @@ ExplicitNodeReference[noskipws]:
   /\s*/ "#|Node=" id=INT "|#" /\s*/
 ;
 
-ImplicitReference[noskipws]:
-  ref=/[^\r\n]+/
+ImplicitReference:
+  ref=Statement
 ;
 
 ContextExpression:
