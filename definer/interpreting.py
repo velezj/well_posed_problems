@@ -39,8 +39,8 @@ class InterpreterBase( object ):
                       toplevel_nodes = [],
                       prompts = [] ):
             self.current_node = current_node
-            self.toplevel_nodes = toplevel_nodes
-            self.prompts = prompts
+            self.toplevel_nodes = list(toplevel_nodes)
+            self.prompts = list(prompts)
 
 
     ##
@@ -48,7 +48,7 @@ class InterpreterBase( object ):
     def __init__( self,
                   name,
                   parser = parsing.Parser(),
-                  state = State() ):
+                  state = None ):
         self.name = name
         self.parser = parser
         self.state = state

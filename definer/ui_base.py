@@ -24,8 +24,12 @@ class BasicUI( object ):
     ##
     # Creates a new UI with a new interpreter
     def __init__( self,
-                  interpreter = interpreting.InterpreterBase('default') ):
+                  interpreter = None ):
         self.interpreter = interpreter
+        if self.interpreter is None:
+            self.interpreter = interpreting.InterpreterBase(
+                'default',
+                state = interpreting.InterpreterBase.State() )
 
     ##
     # The bacis REPL
@@ -51,7 +55,7 @@ class BasicUI( object ):
     # Show the prompts for the current interpreter
     def show_prompts( self, out_stream ):
 
-        # first show any prompts
+        # first show any prompts form interpreter
         for i, p in enumerate(self.interpreter.state.prompts):
             for j, node in enumerate(p.state.toplevel_nodes):
                 out_stream.write( "{0:02d}.{1:02d}) {2}\n".format(
@@ -59,14 +63,32 @@ class BasicUI( object ):
             out_stream.write( "\n" )
 
         # now show the current node
-        cur_node_string = "None"
-        if self.interpreter.state.current_node is not None:
-            cur_node_string = self.interpreter.state.current_node.natural_token_structure.human_friendly()
-        out_stream.write( cur_node_string )
-        out_stream.write( "\n" )
+        self.show_current_node( out_stream )
 
         # show the interpreter name and prompt for input
         out_stream.write( "{0}>> ".format(self.interpreter.name) )
+
+    ##
+    # Show the cufrent node and it's representations and parts
+    def show_current_node( self, out_stream ):
+
+        node = self.interpreter.state.current_node
+        if node is not None:
+            self._show_node( node, out_stream )
+
+    ##
+    # Show the given node to out_stream
+    def _show_node( self, node, out_stream, indent=0, path="*" ):
+
+        indent_string = " " * indent
+        path_string = "{0}) ".format(path)
+        out_stream.write( indent_string + path_string + node.natural_token_structure.human_friendly() )
+        out_stream.write( "\n" )
+        for i,r in enumerate(node.representations):
+            self._show_node( r, out_stream, indent + 4, path + ".rep" + str(i))
+        for i,r in enumerate(node.pieces):
+            self._show_node( r, out_stream, indent + 4, path + ".piece" + str(i) )
+
 
     ##
     # Finish and remove hte prompts
@@ -74,6 +96,7 @@ class BasicUI( object ):
         for p in self.interpreter.state.prompts:
             p.finish()
         del self.interpreter.state.prompts[:]
+        self.interpreter.state.prompts = []
 
     ##
     # read a line of input
