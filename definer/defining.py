@@ -197,9 +197,8 @@ class PythonDefinition( DefinitionBase ):
     def __init__( self,
                   node,
                   source ):
-        super(DefinitionBase, self).__init__( self,
-                                              node,
-                                              source )
+        super(PythonDefinition, self).__init__( node,
+                                                source )
         self.free_vars = self._compute_free_variables()
 
     ##

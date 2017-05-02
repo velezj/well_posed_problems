@@ -14,6 +14,7 @@ logger = logging.getLogger( __name__ )
 import parsing
 import framework
 import node_utilities
+import defining
 
 
 ##========================================================================
@@ -310,7 +311,7 @@ class InterpreterBase( object ):
 
         # Ok, we will simply attach the expression as
         # a python definition to the current node
-        pydef = defining.PythonDefinition(expr.body)
+        pydef = defining.PythonDefinition(self.state.current_node,expr.body)
         self.state.current_node.bind_definition( pydef )
         self.message_prompt( "Bound definition of current node" )
 
@@ -438,7 +439,19 @@ class InterpreterBase( object ):
 
             self.error_prompt( "Unknown argument given to enter command! '{0}'".format( arg ) )
             return
-            
+
+
+    ##
+    # The 'Leave' command
+    # This will set hte current node to it's representation parent
+    def _execute_leave( self, cmd, arg ):
+
+        if len(self.state.current_node.is_representation_of) > 0:
+            self.state.current_node = self.state.current_node.is_representation_of[0]
+        elif len(self.state.current_node.is_piece_of) > 0:
+            self.state.current_node = self.state.current_node.is_piece_of[0]
+        else:
+            self.error_prompt( "Can't leave node with no parents!" )
         
 ##========================================================================
 
