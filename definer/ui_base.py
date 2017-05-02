@@ -49,7 +49,8 @@ class BasicUI( object ):
             raw_in = self.grab_input( in_stream )
             
             # evalute/interpret the input
-            self.interpreter.interpret_full( raw_in )
+            if len(raw_in.strip()) > 0:
+                self.interpreter.interpret_full( raw_in )
 
     ##
     # Show the prompts for the current interpreter
@@ -81,7 +82,7 @@ class BasicUI( object ):
     def _show_node( self, node, out_stream, indent=0, path="*" ):
 
         indent_string = " " * indent
-        path_string = "{0}) ".format(path)
+        path_string = "{0}[id={1}] ".format(path, node.node_id())
         out_stream.write( indent_string + path_string + node.natural_token_structure.human_friendly() )
         out_stream.write( "\n" )
         for i,r in enumerate(node.representations):

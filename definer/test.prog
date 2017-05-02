@@ -19,7 +19,7 @@ We are in a context here
 And some more statements
 
 Let's start with some commands
-\enter A very interesting thing here
+\enter A very interesting thing here ;;
 
 e := "A string here"
 

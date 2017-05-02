@@ -32,7 +32,7 @@ def bfs_inserter( q, children ):
 # An expander for the NodeVisitor which just expands both
 # repreentations and parts, representations first
 def all_children_expander( node ):
-    return node.representations + node.parts
+    return node.representations + node.pieces
 
 ##========================================================================
 

@@ -182,6 +182,15 @@ class NodePath( object ):
     def __repr__(self):
         return self.__str__()
 
+    ##
+    # Equality and has based on the internal list :)
+    def __eq__( self, a ):
+        if not isinstance(a, NodePath):
+            return False
+        return self.steps == a.steps
+    def __hash__( self ):
+        return hash( tuple(self.steps) )
+
 ##========================================================================
 
 ##
@@ -390,6 +399,16 @@ class TokenStructure( object ):
             map(lambda t: "{0}".format(t) if not isinstance(t,TokenStructure) else t.human_friendly(),
                 self.tokens ) )
         return s
+
+    ##
+    # Equality and has based on the internal list :)
+    def __eq__( self, a ):
+        if not isinstance(a, TokenStructure):
+            return False
+        return self.tokens == a.tokens
+    def __hash__( self ):
+        return hash( tuple(self.tokens) )
+
     
 ##========================================================================
 

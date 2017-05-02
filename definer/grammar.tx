@@ -7,7 +7,15 @@ Expression:
 ;
 
 Action:
-  Command | BindExpression | ContextExpression
+  EnterCommand | Command | BindExpression | ContextExpression
+;
+
+EnterCommand:
+  cmd=EnterCommandIdent arg=Reference
+;
+
+EnterCommandIdent[noskipws]:
+  /\s*/- /[\\]/- "enter"
 ;
 
 Identifier:
@@ -15,7 +23,7 @@ Identifier:
 ;
 
 Command[noskipws]:
-  /\s+/ /[\\]/ cmd=Identifier /\s+/ arg=/[^\r\n]*/
+  /\s*/ /[\\]/ cmd=Identifier /\s+/ arg=/[^\r\n]*/
 ;
 
 BindExpression:

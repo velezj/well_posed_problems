@@ -52,6 +52,7 @@ class InterpreterBase( object ):
         self.name = name
         self.parser = parser
         self.state = state
+        self.command_callbacks = {}
 
 
     ##
@@ -71,6 +72,20 @@ class InterpreterBase( object ):
             self.state.toplevel_nodes.append( node )
         else:
             raise RuntimeError( "Can not add top-level node to finished/done interpreted with None state!" )
+
+    ##
+    # Add a command callback
+    # which will be called when a given command (by name) is evaluated
+    #
+    # Callback is f( InterpreterBase, cmd_id, string ) => None
+    # where cmd_id is hte name of the command and the second argument
+    # is the full line string given to the command (unparsed :) )
+    def add_command_callback( self,
+                              cmd,
+                              callback ):
+        if cmd not in self.command_callbacks:
+            self.command_callbacks[ cmd ] = []
+        self.command_callbacks[ cmd ].append( callback )
 
     ##
     # Interpret a full input.
@@ -114,7 +129,7 @@ class InterpreterBase( object ):
     ##
     # returns true if this is a Command expression
     def _expression_is_command( self, expr ):
-        return expr.__class__.__name__ == 'Command'
+        return expr.__class__.__name__.endswith( 'Command' )
 
     ##
     # returns true if this is a Bind expression
@@ -133,17 +148,30 @@ class InterpreterBase( object ):
         # grab the command identifier
         cmd = expr.cmd
 
-        # now, lookup a method in this object
-        methodname = "_execute_{0}".format( cmd )
-        if not hasattr( self,
-                        methodname ):
-            self.error_prompt( "Unknwon Command encountered '{0}'".format(
-                cmd ) )
+        # ok, see if we have a registerd callbacks
+        if cmd in self.command_callbacks:
 
-        # ok, grab the method and call it
-        executor = getattr( self,
-                            methodname )
-        executor( self, cmd, expr.arg )
+            for cb in self.command_callbacks[ cmd ]:
+                cb( self, cmd, expr.arg )
+
+        else:
+            
+            # now, lookup a method in this object
+            methodname = "_execute_{0}".format( cmd )
+            if not hasattr( self,
+                            methodname ):
+                self.error_prompt( "Unknwon Command encountered '{0}'".format(
+                    cmd ) )
+
+            # ok, grab the method and call it
+            if hasattr( self, methodname ):
+                executor = getattr( self,
+                                    methodname )
+                executor( cmd, expr.arg )
+            else:
+
+                # signal error of unknown command
+                self.error_prompt( "Unknown command '{0}'".format( cmd ) )
 
 
     ##
@@ -167,6 +195,9 @@ class InterpreterBase( object ):
             self.state.current_node.bind(
                 expr.slot,
                 value )
+            self.message_prompt( "Added POD Binding '{0}' = '{1}'".format(
+                expr.slot,
+                value ) )
 
         # Ok, see if we are an explicit reference
         elif value.__class__.__name__ == 'ExplicitNodeReference':
@@ -183,6 +214,9 @@ class InterpreterBase( object ):
             self.state.current_node.bind(
                 expr.slot,
                 node )
+            self.message_prompt( "Added binding of explicit node, slot '{0}' = node id={1}".format(
+                expr.slot,
+                node.node_id() ) )
 
         # Check if we are an implciit reference
         elif value.__class__.__name__ == 'ImplicitReference':
@@ -207,6 +241,10 @@ class InterpreterBase( object ):
             self.state.current_node.bind(
                 expr.slot,
                 nodes[0] )
+            self.message_prompt( "Added binding from implicit references, slot '{0)' = node id={1}".format(
+                expr.slot,
+                nodes[0].node_id() ) )
+            
         else:
 
             # unknown binding type
@@ -274,11 +312,20 @@ class InterpreterBase( object ):
         # a python definition to the current node
         pydef = defining.PythonDefinition(expr.body)
         self.state.current_node.bind_definition( pydef )
+        self.message_prompt( "Bound definition of current node" )
 
     ##
     # Add a new message prompt for an error
     def error_prompt( self, message, name="Error" ):
         self.state.prompts.append( ErrorPrompt(
+            parent = self,
+            message = message,
+            name = name ) )
+
+    ##
+    # A a message prompt
+    def message_prompt( self, message, name = 'Message' ):
+        self.state.prompts.append( MessagePrompt(
             parent = self,
             message = message,
             name = name ) )
@@ -299,7 +346,7 @@ class InterpreterBase( object ):
             return found_node is not None
         node_visitor = node_utilities.NodeVisitor(
             visitor=_visit,
-            termintor=_terminate )
+            terminator=_terminate )
         node_visitor.visit( self.state.toplevel_nodes )
 
         # ok, return found_node
@@ -323,9 +370,75 @@ class InterpreterBase( object ):
                 found_nodes.append( node )
         node_visitor = node_utilities.NodeVisitor(
             visitor=_visit )
+        node_visitor.visit( self.state.toplevel_nodes )
 
         # ok, return hte nodes
         return found_nodes
+
+
+    ##
+    # The 'Finish' command.
+    # It just finished this interpreter
+    def _execute_finish( self, cmd, arg ):
+        self.finish()
+
+    ##
+    # The 'Enter' command.
+    # This will take as na argument a Reference (will pe parsed that way)
+    # and will change the current node to that node
+    def _execute_enter( self, cmd, arg ):
+
+        # ok, see what type of reference we have
+        if arg.__class__.__name__ == 'ExplicitNodeReference':
+
+            # ok, find the node we are ferering to by id
+            node = self._find_node_by_id( arg.id )
+
+            # if we cannot find a node, we cannot enter it
+            if node is None:
+                self.error_prompt( "Cannot enter node referenced by id '{0}', node not found in node-graph".format( arg.id ) )
+                return
+
+            # ok, set the current node to this node
+            self.state.current_node = node
+            self.message_prompt( "Changed current node to id={0}".format(
+                self.state.current_node.node_id() ) )
+
+        elif arg.__class__.__name__ == 'ImplicitReference':
+
+            # ok, so here we will try to find all the nodes referenced
+            nodes = self.find_nodes_by_implicit_reference( arg.ref )
+
+            # if we have more than one node matching, this in ambiguous
+            if len(nodes) > 1:
+                self.error_prompt( "Anbiguous reference for entering node, found #{0} nodes which match implicit reference '{1}'".format(
+                    len(nodes),
+                    parsing.expression_full_string( arg.ref ) ) )
+                return
+
+            # if we find exactly one node, then we just change current node
+            if len(nodes) == 1:
+                self.state.current_node = nodes[0]
+                self.message_prompt( "Found single node from implicit reference, changed current node to id={0}".format(
+                    self.state.current_node.node_id() ) )
+
+            else:
+                # ok, having no found references means we want to make a new *piece*
+                # so let's make it
+                piece = framework.Node(
+                    self._statement_to_token_structure( arg.ref ) )
+                self.state.current_node.add_piece( piece )
+
+                # now we also want to set that piece as the current node :)
+                self.state.current_node = piece
+                self.message_prompt( "Created new piece from implicit reference and changed current node to it, id={0}".format(
+                    self.state.current_node.node_id() ) )
+
+        else:
+
+            self.error_prompt( "Unknown argument given to enter command! '{0}'".format( arg ) )
+            return
+            
         
 ##========================================================================
 
